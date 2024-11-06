@@ -1,0 +1,13 @@
+{
+  "name": "korgle",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "crawler:start": "cd ./packages/crawler/ && tsx ./main.ts"
+  },
+  "engines": {
+    "pnpm": "9.12.3",
+    "npm": "please_use_pnpm_instead"
+  },
+  "packageManager": "pnpm@9.12.3"
+}
