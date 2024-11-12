@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "crawler:start": "cd ./packages/crawler/ && tsx ./main.ts"
+    "crawler:start": "cd ./packages/crawler/ && pnpx tsx ./main.ts"
   },
   "engines": {
     "pnpm": "9.12.3",
