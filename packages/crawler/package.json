@@ -2,12 +2,7 @@
   "name": "crawler",
   "type": "module",
   "version": "0.1.0",
-  "description": "",
-  "main": "main.js",
-  "scripts": {
-    "start": "node main.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "main": "main.ts",
   "author": "Korange",
   "dependencies": {
     "jsdom": "^25.0.1",

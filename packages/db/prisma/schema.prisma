@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Page {
+  id             String    @id @default(cuid())
+  crawled        Boolean // 見つかったリンクは全部dbに入れる。クロールしたら中身を置き換える
+  // crawled=falseは検索結果に含めない
+  noIndex        Boolean? // クロールしたらset
+  title          String?
+  description    String?
+  content        String?
+  url            String    @unique
+  lastCrawl      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  links          Link[]    @relation("Links") // このページからのリンク
+  backlinks      Link[]    @relation("Backlinks") // このページへのリンク
+  siteBacklinks  Site[]    @relation("SiteBacklinks") // このページへのリンク（サイト単位）
+  siteId         String
+  site           Site      @relation("SitePages", fields: [siteId], references: [id])
+
+  @@index([crawled])
+}
+
+model Link {
+  id         String    @id @default(cuid())
+  external   Boolean   // 外部リンクかどうか・リンク数じゃなくてリンクされてる**サイト**数を数える?
+  fromId     String
+  toId       String
+  from       Page      @relation("Links", fields: [fromId], references: [id])
+  to         Page      @relation("Backlinks", fields: [toId], references: [id])
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([fromId, toId])
+}
+
+model Site {  // Site = Origin
+  id         String    @id @default(cuid())
+  origin     String    @unique
+  pages      Page[]    @relation("SitePages")
+  links      Page[]    @relation("SiteBacklinks")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}

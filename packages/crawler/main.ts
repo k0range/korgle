@@ -1,8 +1,14 @@
 // todo: originごとにページ数の上限
-import puppeteer, { Browser } from 'puppeteer';
+import puppeteer from 'puppeteer';
+import { PrismaClient } from "@prisma/client"
+
 import crawlSite from './core/crawlSite';
 import getRobotsTxt from './robotstxt/getRobotsTxt';
 import parseSitemap from './robotstxt/parseSitemap';
+import addToQueue from './core/addToQueue';
+import crawlJob from './core/crawlJob';
+
+const prisma = new PrismaClient()
 
 const browser = await puppeteer.launch({
   headless: false,
@@ -11,10 +17,37 @@ const browser = await puppeteer.launch({
 const pages: {name: string, children?: typeof pages}[] = [{name: 'https://korange.work/', children: []}];
 
 let crawlInterval: NodeJS.Timeout | null = null;
-const queue: string[] = ['https://korange.work/'];
+
+// load queue from db
+let queue: string[] = [];
+const uncrawledPages = await prisma.page.findMany({ where: { crawled: false } });
+
+if (uncrawledPages.length === 0) {
+  queue = ['https://korange.work/'];
+} else {
+  queue = uncrawledPages.map((page) => page.url);
+}
+
 const crawled: string[] = [];
 const founded: string[] = queue;
 let activeCrawls: string[] = [];
+
+for (const url of queue) {
+  await prisma.page.upsert({
+    where: { url: url },
+    update: {},
+    create: {
+      crawled: false,
+      url: url,
+      site: {
+        connectOrCreate: {
+          where: { origin: new URL(url).origin },
+          create: { origin: new URL(url).origin }
+        }
+      }
+    }
+  });
+}
 
 async function job() {
   // activeCrawlsが上限に達していたら待つ
@@ -22,26 +55,26 @@ async function job() {
     return
   }
 
-  const page = queue.shift();
+  const pageUrl = queue.shift();
 
   // pageのoriginが同じページをクロール中の場合は後回し
-  if (page && activeCrawls.some((active) => new URL(active).origin === new URL(page).origin)) {
-    console.log(`Postponed ${page} because same origin page is crawling`);
-    queue.push(page)
+  if (pageUrl && activeCrawls.some((active) => new URL(active).origin === new URL(pageUrl).origin)) {
+    console.log(`Postponed ${pageUrl} because same origin pageUrl is crawling`);
+    addToQueue(pageUrl, { queue })
     job() // 別のpageをクロールする
     return
   }
 
-  if (page && !crawled.includes(page)) {
-    activeCrawls.push(page);
-    console.log(`Crawling ${page} (${activeCrawls.length} active crawls, ${queue.length} in queue)`);
+  if (pageUrl && !crawled.includes(pageUrl)) {
+    activeCrawls.push(pageUrl);
+    console.log(`Crawling ${pageUrl} (${activeCrawls.length} active crawls, ${queue.length} in queue)`);
     try {
-      const urlObj = new URL(page);
+      const urlObj = new URL(pageUrl);
       const robotsTxt = await getRobotsTxt(urlObj.origin)
 
       if ( robotsTxt.crawlDelay && robotsTxt.crawlDelay > 61 ) {
-        console.log(`Crawl delay is too long (${robotsTxt.crawlDelay}). Skipping ${page}`)
-        activeCrawls.splice(activeCrawls.indexOf(page), 1)
+        console.log(`Crawl delay is too long (${robotsTxt.crawlDelay}). Skipping ${pageUrl}`)
+        activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
         job()
         return
       }
@@ -51,40 +84,24 @@ async function job() {
         try {
           const sitemapXml = await (await fetch(robotsTxt.sitemap)).text()
           const sitemapArray = await parseSitemap(sitemapXml)
-          queue.push(...sitemapArray)
+          sitemapArray.forEach((url) => addToQueue(url, { queue }))
         } catch (e) {
           console.error(`Failed to fetch sitemap ${robotsTxt.sitemap}`)
           console.error(e)
         }
       }
   
-      if (robotsTxt.isAllowed(page)) {
-        const result = await crawlSite(browser, page, { crawled });
-        if (!result) {
-          console.log(`Crawling ${page} is noindex or canonicalized. Skipping`);
-          activeCrawls.splice(activeCrawls.indexOf(page), 1)
-          job()
-          return
-        }
-        const { indexOk, title, description, content, newUrls } = result
-        let filteredLinks = newUrls.filter((url) => !founded.includes(url))
-        filteredLinks = [...new Set(filteredLinks)] // 重複を除去
-
-        queue.push(...filteredLinks);
-        crawled.push(page);
-        founded.push(...filteredLinks);
-        console.log(`Found ${filteredLinks.length} links on ${page}`);
-        
-        // indexOkがtrueの場合のみdbに保存
+      if (robotsTxt.isAllowed(pageUrl)) {
+        await crawlJob({ browser, pageUrl, queue, crawled, founded, activeCrawls, job })
       } else {
-        console.log(`Crawling ${page} is not allowed by robots.txt`);
+        console.log(`Crawling ${pageUrl} is not allowed by robots.txt`);
         job()
       }
     } catch (e) {
-      console.error(`Failed to crawl ${page}`);
+      console.error(`Failed to crawl ${pageUrl}`);
       console.error(e);
     }
-    activeCrawls.splice(activeCrawls.indexOf(page), 1)
+    activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
   }
 
   if (queue.length === 0 && activeCrawls.length === 0) {
@@ -96,4 +113,4 @@ async function job() {
   }
 }
 
-crawlInterval = setInterval(job, 3000)
+crawlInterval = setInterval(job, 2500)
