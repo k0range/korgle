@@ -3,11 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "crawler:start": "cd ./packages/crawler/ && pnpx tsx ./main.ts"
+    "crawler:start": "cd ./packages/crawler/ && pnpx tsx ./main.ts",
+    "db:migrate:dev": "cd ./packages/db/ && pnpx prisma migrate dev",
+    "db:migrate:deploy": "cd ./packages/db/ && pnpx prisma migrate deploy",
+    "db:generate": "cd ./packages/db/ && pnpx prisma generate"
   },
   "engines": {
     "pnpm": "9.12.3",
     "npm": "please_use_pnpm_instead"
   },
-  "packageManager": "pnpm@9.12.3"
+  "packageManager": "pnpm@9.12.3",
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  }
 }
