@@ -13,6 +13,17 @@ export default async function crawlSite(browser: Browser, url: string, context: 
   }
   
   const page = await browser.newPage();
+  await page.setRequestInterception(true);
+  page.on('request', (request) => {
+    const resourceType = request.resourceType();
+    
+    if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || resourceType === 'media' || resourceType === 'websocket') {
+      request.abort();
+    } else {
+      request.continue();
+    }
+  });
+
   await page.goto(url);
 
   const crawlDelay = robotsTxt.crawlDelay ?? 4;
