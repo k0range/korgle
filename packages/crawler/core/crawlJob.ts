@@ -74,6 +74,12 @@ export default async function crawlJob(context: {
             }
           }
         },
+        siteBacklinks: {
+          connectOrCreate: {
+            where: { origin: (new URL(pageRecord.url)).origin },
+            create: { origin: (new URL(pageRecord.url)).origin }
+          }
+        },
         site: {
           connectOrCreate: {
             where: { origin: (new URL(link)).origin },
@@ -83,7 +89,6 @@ export default async function crawlJob(context: {
       }
     });
   }
-
   // リンクの中に以前クロールしたことがあるものがあればbacklinkを追加
   filteredLinks.forEach(async (link) => {
     const foundPage = await prisma.page.findUnique({
@@ -109,6 +114,12 @@ export default async function crawlJob(context: {
                 from: {
                   connect: pageRecord
                 }
+              }
+            },
+            siteBacklinks: {
+              connectOrCreate: {
+                where: { origin: (new URL(pageRecord.url)).origin },
+                create: { origin: (new URL(pageRecord.url)).origin }
               }
             }
           }
