@@ -110,6 +110,13 @@ async function job() {
       })
       if (site && site.noCrawl) {
         console.log(`This site (${site.origin}) is set to noCrawl (reason: ${site.noCrawlReason}).`)
+        await prisma.page.update({
+          where: { url: pageUrl },
+          data: {
+            crawled: true,
+            noIndex: true
+          }
+        })
         activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
         job()
         return
@@ -144,9 +151,9 @@ async function job() {
       console.error(`Failed to crawl ${pageUrl}`);
       console.error(e);
     }
-    setTimeout(() => { // 同じオリジンをクロールするまで３秒以上開くようにする
+    setTimeout(() => { // 同じオリジンをクロールするまで時間が開くようにする
       activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
-    }, 3000);
+    }, 2500);
   }
 
   if (queue.length === 0 && activeCrawls.length === 0) {
@@ -158,4 +165,4 @@ async function job() {
   }
 }
 
-crawlInterval = setInterval(job, 2500)
+crawlInterval = setInterval(job, 3000)
