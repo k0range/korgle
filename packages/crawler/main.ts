@@ -24,6 +24,18 @@ const uncrawledPages = await prisma.page.findMany({ where: { crawled: false } })
 
 if (uncrawledPages.length === 0) {
   queue = ['https://korange.work/'];
+  await prisma.page.create({
+    data: {
+      crawled: false,
+      url: 'https://korange.work/',
+      site: {
+        connectOrCreate: {
+          where: { origin: 'https://korange.work/' },
+          create: { origin: 'https://korange.work/' }
+        }
+      }
+    }
+  });
 } else {
   queue = uncrawledPages.map((page) => page.url);
 }
@@ -31,23 +43,6 @@ if (uncrawledPages.length === 0) {
 const crawled: string[] = [];
 const founded: string[] = queue;
 let activeCrawls: string[] = [];
-
-for (const url of queue) {
-  await prisma.page.upsert({
-    where: { url: url },
-    update: {},
-    create: {
-      crawled: false,
-      url: url,
-      site: {
-        connectOrCreate: {
-          where: { origin: new URL(url).origin },
-          create: { origin: new URL(url).origin }
-        }
-      }
-    }
-  });
-}
 
 async function job() {
   // activeCrawlsが上限に達していたら待つ
@@ -57,20 +52,60 @@ async function job() {
 
   const pageUrl = queue.shift();
 
+  if (!pageUrl) {
+    return;
+  }
+
+  // 同じoriginのページが60以上クロールされていたら消す
+  const site = await prisma.site.findUnique({
+    where: {
+      origin: new URL(pageUrl).origin
+    },
+    include: {
+      pages: {
+        where: { crawled: true }
+      }
+    }
+  })
+  if (site && site.pages?.length > 60) {
+    console.log(`The limit per origin (${site.origin}) has been exceeded. Skipping ${pageUrl}`)
+    await prisma.site.update({
+      where: { origin: site.origin },
+      data: {
+        noCrawl: true,
+        noCrawlReason: 'PAGE_LIMIT_EXCEEDED'
+      }
+    })
+    job()
+    return
+  }
+
   // pageのoriginが同じページをクロール中の場合は後回し
-  if (pageUrl && activeCrawls.some((active) => new URL(active).origin === new URL(pageUrl).origin)) {
+  if (activeCrawls.some((active) => new URL(active).origin === new URL(pageUrl).origin)) {
     console.log(`Postponed ${pageUrl} because same origin pageUrl is crawling`);
     addToQueue(pageUrl, { queue })
     job() // 別のpageをクロールする
     return
   }
 
-  if (pageUrl && !crawled.includes(pageUrl)) {
+  if (!crawled.includes(pageUrl)) {
     activeCrawls.push(pageUrl);
     console.log(`Crawling ${pageUrl} (${activeCrawls.length} active crawls, ${queue.length} in queue)`);
     try {
       const urlObj = new URL(pageUrl);
       const robotsTxt = await getRobotsTxt(urlObj.origin)
+
+      const site = await prisma.site.findUnique({
+        where: {
+          origin: urlObj.origin
+        }
+      })
+      if (site && site.noCrawl) {
+        console.log(`This site (${site.origin}) is set to noCrawl (reason: ${site.noCrawlReason}).`)
+        activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
+        job()
+        return
+      }
 
       if ( robotsTxt.crawlDelay && robotsTxt.crawlDelay > 61 ) {
         console.log(`Crawl delay is too long (${robotsTxt.crawlDelay}). Skipping ${pageUrl}`)
@@ -101,7 +136,9 @@ async function job() {
       console.error(`Failed to crawl ${pageUrl}`);
       console.error(e);
     }
-    activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
+    setTimeout(() => { // 同じオリジンをクロールするまで３秒以上開くようにする
+      activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
+    }, 3000);
   }
 
   if (queue.length === 0 && activeCrawls.length === 0) {

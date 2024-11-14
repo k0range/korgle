@@ -24,7 +24,21 @@ export default async function crawlJob(context: {
     return
   }
   const { indexOk, title, description, content, newUrls } = result
-  let filteredLinks = newUrls.filter((url) => !founded.includes(url))
+  let filteredLinks = newUrls
+    .filter((url) => !founded.includes(url))
+    .filter(async (url) => {
+      const urlObj = new URL(url)
+      const origin = urlObj.origin
+      const site = await prisma.site.findUnique({
+        where: { origin: origin }
+      })
+      if (site && site.noCrawl) {
+        return false
+      } else {
+        return true
+      }
+    })
+  
   filteredLinks = [...new Set(filteredLinks)] // 重複を除去
 
   queue.push(...filteredLinks);
