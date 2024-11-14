@@ -47,11 +47,18 @@ model Link {
   @@unique([fromId, toId])
 }
 
+enum NoCrawlReason {
+  MANUAL
+  PAGE_LIMIT_EXCEEDED
+}
+
 model Site {  // Site = Origin
   id         String    @id @default(cuid())
   origin     String    @unique
   pages      Page[]    @relation("SitePages")
   links      Page[]    @relation("SiteBacklinks")
+  noCrawl    Boolean  @default(false) // クロールしない
+  noCrawlReason  NoCrawlReason?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 }
