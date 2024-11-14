@@ -14,6 +14,7 @@ const browser = await puppeteer.launch({
   headless: false,
   args: ['--user-agent=Mozilla/5.0 (compatible; KorangeExptCrawler/0.1.0; +https://exptcrawler.korange.work)']
 })
+
 const pages: {name: string, children?: typeof pages}[] = [{name: 'https://korange.work/', children: []}];
 
 let crawlInterval: NodeJS.Timeout | null = null;
@@ -69,6 +70,13 @@ async function job() {
   })
   if (site && site.pages?.length > 60) {
     console.log(`The limit per origin (${site.origin}) has been exceeded. Skipping ${pageUrl}`)
+    await prisma.page.update({
+      where: { url: pageUrl },
+      data: {
+        crawled: true,
+        noIndex: true
+      }
+    })
     await prisma.site.update({
       where: { origin: site.origin },
       data: {
