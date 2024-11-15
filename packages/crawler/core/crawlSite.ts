@@ -6,6 +6,7 @@ import canonicalizeUri from "../utils/canonicalizeUri";
 export default async function crawlSite(browser: Browser, url: string, context: { crawled: string[] }) {
   const urlObj = new URL(url);
   let indexOk = true;
+  let noFollow = false;
   const robotsTxt = await getRobotsTxt(urlObj.origin)
   
   if (!robotsTxt.isAllowed(url)) {
@@ -42,19 +43,24 @@ export default async function crawlSite(browser: Browser, url: string, context: 
     return null;
   }
   const xRobotsTag = response.headers()['x-robots-tag'];
+  let xRobotsRule = '';
   if (xRobotsTag) {
     if (xRobotsTag.includes(':')) {
       const [userAgent, rule] = xRobotsTag.split(':');
-      if (userAgent.trim().toLowerCase() === 'korangeexptcrawler' && rule.toLowerCase().includes('noindex')) {
-        indexOk = false;
-        console.log(`${url} is noindex.`);
+      if (userAgent.trim().toLowerCase() === 'korangeexptcrawler') {
+        xRobotsRule = rule.trim().toLowerCase();
       }
     } else {
-      if (xRobotsTag.toLowerCase().includes('noindex')) {
-        indexOk = false;
-        console.log(`${url} is noindex.`);
-      }
+      xRobotsRule = xRobotsTag.trim().toLowerCase();;
     }
+  }
+  if (xRobotsTag.includes('noindex')) {
+    indexOk = false;
+    console.log(`${url} is noindex.`);
+  }
+  if (xRobotsTag.includes('nofollow')) {
+    noFollow = true;
+    console.log(`${url} is nofollow.`);
   }
 
   const crawlDelay = robotsTxt.crawlDelay ?? 4;
@@ -103,17 +109,20 @@ export default async function crawlSite(browser: Browser, url: string, context: 
   });
 
   // リンクを収集
-  let newUrls = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll('a'))
-      .filter((a) => {
-        return !a.getAttribute('rel')?.includes('nofollow');
-      })
-      .filter((a) => {
-        return a.href.startsWith('http');
-      })
-      .map((a) => a.href);
-  });
-  newUrls.map((newUrl) => canonicalizeUri(newUrl, urlObj.origin));
+  let newUrls = []
+  if (!noFollow) {
+    newUrls = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a'))
+        .filter((a) => {
+          return !a.getAttribute('rel')?.includes('nofollow');
+        })
+        .filter((a) => {
+          return a.href.startsWith('http');
+        })
+        .map((a) => a.href);
+    });
+    newUrls.map((newUrl) => canonicalizeUri(newUrl, urlObj.origin));
+  }
 
   await page.close();
   return { indexOk, title, description, content, newUrls };
