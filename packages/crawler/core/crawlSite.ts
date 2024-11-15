@@ -1,7 +1,10 @@
 import { Browser } from "puppeteer";
+import { PrismaClient } from "@prisma/client";
 
 import getRobotsTxt from "../robotstxt/getRobotsTxt";
 import canonicalizeUri from "../utils/canonicalizeUri";
+
+const prisma = new PrismaClient();
 
 export default async function crawlSite(browser: Browser, url: string, context: { crawled: string[] }) {
   const urlObj = new URL(url);
@@ -88,8 +91,18 @@ export default async function crawlSite(browser: Browser, url: string, context: 
 
     // すでにcanonicalページがクロール済みの場合はスキップ
     if (context.crawled.includes(canonicalUrl)) {
+      console.log(`${url} is canonical to ${canonicalUrl} and its crawled. Skipping`);
       await page.close();
       return null;
+    } else {
+      const canonicalPageRecord = await prisma.page.findUnique({
+        where: { url: canonicalUrl }
+      })
+      if (canonicalPageRecord && canonicalPageRecord.crawled) {
+        console.log(`${url} is canonical to ${canonicalUrl} and its crawled. Skipping`);
+        await page.close();
+        return null;
+      }
     }
     // memo: dbへはurlではなくcanonicalUrlを登録しておく
   }

@@ -7,12 +7,13 @@ import getRobotsTxt from './robotstxt/getRobotsTxt';
 import parseSitemap from './robotstxt/parseSitemap';
 import addToQueue from './core/addToQueue';
 import crawlJob from './core/crawlJob';
+import canonicalizeUri from './utils/canonicalizeUri';
 
 const prisma = new PrismaClient()
 
 const browser = await puppeteer.launch({
   headless: false,
-  args: ['--user-agent=Mozilla/5.0 (compatible; KorangeExptCrawler/0.1.0; +https://exptcrawler.korange.work)']
+  args: [`--user-agent=Mozilla/5.0 (compatible; KorangeExptCrawler/${process.env.npm_package_version}; +https://exptcrawler.korange.work)`]
 })
 
 const pages: {name: string, children?: typeof pages}[] = [{name: 'https://korange.work/', children: []}];
@@ -47,15 +48,15 @@ let activeCrawls: string[] = [];
 
 async function job() {
   // activeCrawlsが上限に達していたら待つ
-  if (activeCrawls.length > 12) {
+  if (activeCrawls.length > 7) {
     return
   }
 
-  const pageUrl = queue.shift();
-
-  if (!pageUrl) {
+  const shiftedQueue = queue.shift();
+  if (!shiftedQueue) {
     return;
   }
+  const pageUrl = canonicalizeUri(shiftedQueue, new URL(shiftedQueue).origin);
 
   // 同じoriginのページが60以上クロールされていたら消す
   const site = await prisma.site.findUnique({
@@ -97,6 +98,16 @@ async function job() {
   }
 
   if (!crawled.includes(pageUrl)) {
+    // すでにクロールしているかdbで確認
+    const page = await prisma.page.findUnique({
+      where: { url: pageUrl }
+    });
+    if (page && page.crawled) {
+      console.log(`Skipping ${pageUrl} because it is already crawled.`);
+      job()
+      return
+    }
+
     activeCrawls.push(pageUrl);
     console.log(`Crawling ${pageUrl} (${activeCrawls.length} active crawls, ${queue.length} in queue)`);
     try {
