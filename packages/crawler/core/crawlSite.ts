@@ -37,7 +37,7 @@ export default async function crawlSite(browser: Browser, url: string, context: 
     await page.close();
     return null;
   }
-  if (response.headers()['content-type']?.includes('text/html')) {
+  if (response.headers()['content-type'] && !response.headers()['content-type']?.includes('text/html')) {
     console.log(`${url} is not HTML. Skipping`);
     await page.close();
     return null;
@@ -53,14 +53,14 @@ export default async function crawlSite(browser: Browser, url: string, context: 
     } else {
       xRobotsRule = xRobotsTag.trim().toLowerCase();;
     }
-  }
-  if (xRobotsTag.includes('noindex')) {
-    indexOk = false;
-    console.log(`${url} is noindex.`);
-  }
-  if (xRobotsTag.includes('nofollow')) {
-    noFollow = true;
-    console.log(`${url} is nofollow.`);
+    if (xRobotsTag.includes('noindex')) {
+      indexOk = false;
+      console.log(`${url} is noindex.`);
+    }
+    if (xRobotsTag.includes('nofollow')) {
+      noFollow = true;
+      console.log(`${url} is nofollow.`);
+    }
   }
 
   const crawlDelay = robotsTxt.crawlDelay ?? 4;
@@ -109,7 +109,7 @@ export default async function crawlSite(browser: Browser, url: string, context: 
   });
 
   // リンクを収集
-  let newUrls = []
+  let newUrls: string[] = []
   if (!noFollow) {
     newUrls = await page.evaluate(() => {
       return Array.from(document.querySelectorAll('a'))
