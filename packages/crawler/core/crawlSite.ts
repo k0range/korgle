@@ -24,7 +24,38 @@ export default async function crawlSite(browser: Browser, url: string, context: 
     }
   });
 
-  await page.goto(url);
+  const response = await page.goto(url);
+
+  if (!response) {
+    console.log(`${url} is not reachable. Skipping`);
+    await page.close();
+    return null;
+  }
+  if (response.status() !== 200) {
+    console.log(`${url} is not status code 200. Skipping`);
+    await page.close();
+    return null;
+  }
+  if (response.headers()['content-type']?.includes('text/html')) {
+    console.log(`${url} is not HTML. Skipping`);
+    await page.close();
+    return null;
+  }
+  const xRobotsTag = response.headers()['x-robots-tag'];
+  if (xRobotsTag) {
+    if (xRobotsTag.includes(':')) {
+      const [userAgent, rule] = xRobotsTag.split(':');
+      if (userAgent.trim().toLowerCase() === 'korangeexptcrawler' && rule.toLowerCase().includes('noindex')) {
+        indexOk = false;
+        console.log(`${url} is noindex.`);
+      }
+    } else {
+      if (xRobotsTag.toLowerCase().includes('noindex')) {
+        indexOk = false;
+        console.log(`${url} is noindex.`);
+      }
+    }
+  }
 
   const crawlDelay = robotsTxt.crawlDelay ?? 4;
   await new Promise((resolve) =>
