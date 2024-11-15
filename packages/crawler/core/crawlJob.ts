@@ -18,7 +18,7 @@ export default async function crawlJob(context: {
 
   const result = await crawlSite(browser, pageUrl, { crawled });
   if (!result) {
-    console.log(`Crawling ${pageUrl} is noindex or canonicalized. Skipping`);
+    console.log(`Crawling ${pageUrl} is skipped.`);
     activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
     context.job()
     return

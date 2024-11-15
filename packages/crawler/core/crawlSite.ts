@@ -6,6 +6,7 @@ import canonicalizeUri from "../utils/canonicalizeUri";
 export default async function crawlSite(browser: Browser, url: string, context: { crawled: string[] }) {
   const urlObj = new URL(url);
   let indexOk = true;
+  let noFollow = false;
   const robotsTxt = await getRobotsTxt(urlObj.origin)
   
   if (!robotsTxt.isAllowed(url)) {
@@ -24,7 +25,43 @@ export default async function crawlSite(browser: Browser, url: string, context: 
     }
   });
 
-  await page.goto(url);
+  const response = await page.goto(url);
+
+  if (!response) {
+    console.log(`${url} is not reachable. Skipping`);
+    await page.close();
+    return null;
+  }
+  if (response.status() !== 200) {
+    console.log(`${url} is not status code 200. Skipping`);
+    await page.close();
+    return null;
+  }
+  if (response.headers()['content-type'] && !response.headers()['content-type']?.includes('text/html')) {
+    console.log(`${url} is not HTML. Skipping`);
+    await page.close();
+    return null;
+  }
+  const xRobotsTag = response.headers()['x-robots-tag'];
+  let xRobotsRule = '';
+  if (xRobotsTag) {
+    if (xRobotsTag.includes(':')) {
+      const [userAgent, rule] = xRobotsTag.split(':');
+      if (userAgent.trim().toLowerCase() === 'korangeexptcrawler') {
+        xRobotsRule = rule.trim().toLowerCase();
+      }
+    } else {
+      xRobotsRule = xRobotsTag.trim().toLowerCase();;
+    }
+    if (xRobotsTag.includes('noindex')) {
+      indexOk = false;
+      console.log(`${url} is noindex.`);
+    }
+    if (xRobotsTag.includes('nofollow')) {
+      noFollow = true;
+      console.log(`${url} is nofollow.`);
+    }
+  }
 
   const crawlDelay = robotsTxt.crawlDelay ?? 4;
   await new Promise((resolve) =>
@@ -72,17 +109,20 @@ export default async function crawlSite(browser: Browser, url: string, context: 
   });
 
   // リンクを収集
-  let newUrls = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll('a'))
-      .filter((a) => {
-        return !a.getAttribute('rel')?.includes('nofollow');
-      })
-      .filter((a) => {
-        return a.href.startsWith('http');
-      })
-      .map((a) => a.href);
-  });
-  newUrls.map((newUrl) => canonicalizeUri(newUrl, urlObj.origin));
+  let newUrls: string[] = []
+  if (!noFollow) {
+    newUrls = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a'))
+        .filter((a) => {
+          return !a.getAttribute('rel')?.includes('nofollow');
+        })
+        .filter((a) => {
+          return a.href.startsWith('http');
+        })
+        .map((a) => a.href);
+    });
+    newUrls.map((newUrl) => canonicalizeUri(newUrl, urlObj.origin));
+  }
 
   await page.close();
   return { indexOk, title, description, content, newUrls };
