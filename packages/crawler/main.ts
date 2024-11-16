@@ -58,7 +58,15 @@ async function job() {
   }
   const pageUrl = canonicalizeUri(shiftedQueue, new URL(shiftedQueue).origin);
 
-  // 同じoriginのページが60以上クロールされていたら消す
+  // pageのoriginが同じページをクロール中の場合は後回し
+  if (activeCrawls.some((active) => new URL(active).origin === new URL(pageUrl).origin)) {
+    console.log(`Postponed ${pageUrl} because same origin pageUrl is crawling`);
+    addToQueue(pageUrl, { queue })
+    job() // 別のpageをクロールする
+    return
+  }
+
+  // 同じoriginのページが50以上クロールされていたら消す
   const site = await prisma.site.findUnique({
     where: {
       origin: new URL(pageUrl).origin
@@ -69,7 +77,7 @@ async function job() {
       }
     }
   })
-  if (site && site.pages?.length > 60) {
+  if (site && site.pages?.length > 50) {
     console.log(`The limit per origin (${site.origin}) has been exceeded. Skipping ${pageUrl}`)
     await prisma.page.update({
       where: { url: pageUrl },
@@ -86,14 +94,6 @@ async function job() {
       }
     })
     job()
-    return
-  }
-
-  // pageのoriginが同じページをクロール中の場合は後回し
-  if (activeCrawls.some((active) => new URL(active).origin === new URL(pageUrl).origin)) {
-    console.log(`Postponed ${pageUrl} because same origin pageUrl is crawling`);
-    addToQueue(pageUrl, { queue })
-    job() // 別のpageをクロールする
     return
   }
 
@@ -164,7 +164,7 @@ async function job() {
     }
     setTimeout(() => { // 同じオリジンをクロールするまで時間が開くようにする
       activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
-    }, 3500);
+    }, 3000);
   }
 
   if (queue.length === 0 && activeCrawls.length === 0) {
@@ -176,4 +176,4 @@ async function job() {
   }
 }
 
-crawlInterval = setInterval(job, 3000)
+crawlInterval = setInterval(job, 2800)
