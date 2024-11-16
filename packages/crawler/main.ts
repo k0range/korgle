@@ -12,7 +12,7 @@ import canonicalizeUri from './utils/canonicalizeUri';
 const prisma = new PrismaClient()
 
 const browser = await puppeteer.launch({
-  headless: false,
+  headless: process.env.NODE_ENV === 'production',
   args: [`--user-agent=Mozilla/5.0 (compatible; KorangeExptCrawler/${process.env.npm_package_version}; +https://exptcrawler.korange.work)`]
 })
 
@@ -164,7 +164,7 @@ async function job() {
     }
     setTimeout(() => { // 同じオリジンをクロールするまで時間が開くようにする
       activeCrawls.splice(activeCrawls.indexOf(pageUrl), 1)
-    }, 2500);
+    }, 3500);
   }
 
   if (queue.length === 0 && activeCrawls.length === 0) {
